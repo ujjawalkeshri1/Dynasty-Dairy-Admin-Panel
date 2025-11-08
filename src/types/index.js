@@ -1,0 +1,1 @@
+// This file is intentionally left blank as it only contained TypeScript interfaces.

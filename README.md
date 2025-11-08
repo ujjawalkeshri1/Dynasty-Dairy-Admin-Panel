@@ -1,7 +1,7 @@
 
-  # Admin Panel Design
+  # Admin Panel UI/UX Redesign
 
-  This is a code bundle for Admin Panel Design. The original project is available at https://www.figma.com/design/Psx47ATNrOHQtom8C0qeWn/Admin-Panel-Design.
+  This is a code bundle for Admin Panel UI/UX Redesign. The original project is available at https://www.figma.com/design/eeXh2lkhFSo2AOToXWF9wn/Admin-Panel-UI-UX-Redesign.
 
   ## Running the code
 

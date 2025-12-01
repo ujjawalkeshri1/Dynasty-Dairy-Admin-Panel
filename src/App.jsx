@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { SlidingSidebar } from "./components/SlidingSidebar";
 import { UpdatedHeader } from "./components/UpdatedHeader";
 import { Dashboard } from "./pages/Dashboard";
 import { Orders } from "./pages/Orders";
 import { Products } from "./pages/Products";
+import { CategoryManagement } from "./pages/CategoryManagement"; // ✨ ADD THIS
 import { Customers } from "./pages/Customers";
+import { CustomerDetailsPage } from './pages/CustomerDetailsPage';
 import { UpdatedSettings } from "./pages/UpdatedSettings";
 import { ProfileSettings } from "./pages/ProfileSettings";
 import { UserManagement } from "./pages/UserManagement";
@@ -20,86 +23,67 @@ import { Signup } from "./pages/Signup";
 import { getCurrentUser, logoutUser } from "./lib/auth";
 import { Toaster } from "./components/ui/sonner";
 
-function AppContent({
-  currentPage,
-  setCurrentPage,
-  currentUser,
-  handleLogout,
-  handleProfileUpdate,
-}) {
+// Wrapper for the Authenticated Dashboard Layout
+function DashboardLayout({ currentUser, handleLogout, handleProfileUpdate }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Determine active page for Sidebar highlighting based on URL
+  const getCurrentPage = () => {
+    const path = location.pathname.split('/')[1];
+    // If path is empty (root), default to dashboard
+    if (!path) return 'dashboard';
+    // Keep 'customers' highlighted even when viewing details
+    if (path === 'customers') return 'customers';
+    return path;
+  };
+
+  const currentPage = getCurrentPage();
+
   const getPageInfo = () => {
+    if (location.pathname.startsWith('/customers/') && location.pathname.split('/').length > 2) {
+      return { title: "Customer Details", subtitle: "View Profile" };
+    }
+
     switch (currentPage) {
       case "dashboard":
         return { title: "Dashboard", subtitle: "Overview" };
       case "orders":
-        return { title: "Orders", subtitle: "" };
+        return { title: "Orders", subtitle: "Manage Orders" };
       case "products":
-        return { title: "Products", subtitle: "" };
+        return { title: "Products", subtitle: "Inventory Management" };
+      case "category-management": // ✨ ADD THIS
+        return { title: "Category Management", subtitle: "Manage Categories" };
       case "customers":
-        return { title: "Customers", subtitle: "" };
+        return { title: "Customers", subtitle: "Customer Base" };
       case "delivery-staff":
-        return { title: "Delivery Staff", subtitle: "" };
+        return { title: "Delivery Staff", subtitle: "Team Management" };
       case "user-management":
-        return { title: "User Management", subtitle: "" };
+        return { title: "User Management", subtitle: "Admin Access" };
       case "home-page":
-        return { title: "Home Page Management", subtitle: "" };
+        return { title: "Home Page", subtitle: "Content Management" };
       case "wallet":
-        return { title: "Wallet", subtitle: "" };
+        return { title: "Wallet", subtitle: "Discounts & Transactions" };
       case "membership":
-        return { title: "Membership", subtitle: "" };
+        return { title: "Membership", subtitle: "Tiers & Benefits" };
       case "updated-settings":
-        return { title: "Settings", subtitle: "" };
+        return { title: "Settings", subtitle: "System Configuration" };
       case "profile":
-        return { title: "Profile Settings", subtitle: "" };
+        return { title: "Profile Settings", subtitle: "Your Account" };
       case "reports":
-        return { title: "Reports", subtitle: "" };
+        return { title: "Reports", subtitle: "Analytics & Insights" };
       case "notifications":
-        return { title: "Push Notifications", subtitle: "" };
+        return { title: "Push Notifications", subtitle: "Marketing" };
       case "help-support":
-        return { title: "Help & Support", subtitle: "" };
+        return { title: "Help & Support", subtitle: "Resources" };
       default:
         return { title: "Dashboard", subtitle: "Overview" };
     }
   };
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case "dashboard":
-        return <Dashboard />;
-      case "orders":
-        return <Orders />;
-      case "products":
-        return <Products />;
-      case "customers":
-        return <Customers />;
-      case "delivery-staff":
-        return <DeliveryStaff />;
-      case "user-management":
-        return <UserManagement />;
-      case "home-page":
-        return <HomePageManagement />;
-      case "wallet":
-        return <Wallet />;
-      case "membership":
-        return <Membership />;
-      case "updated-settings":
-        return <UpdatedSettings />;
-      case "profile":
-        return (
-          <ProfileSettings
-            onProfileUpdate={handleProfileUpdate}
-            currentUser={currentUser}
-          />
-        );
-      case "reports":
-        return <Reports />;
-      case "notifications":
-        return <PushNotifications />;
-      case "help-support":
-        return <HelpSupport />;
-      default:
-        return <Dashboard />;
-    }
+  const handleNavigation = (pageKey) => {
+    if (pageKey === 'dashboard') navigate('/');
+    else navigate(`/${pageKey}`);
   };
 
   return (
@@ -107,12 +91,13 @@ function AppContent({
       <Toaster />
       <SlidingSidebar
         currentPage={currentPage}
-        onPageChange={setCurrentPage}
+        onPageChange={handleNavigation}
         onLogout={handleLogout}
+        userRole={currentUser?.role || "User"}
       />
       <div className="flex flex-col h-full ml-20">
         <UpdatedHeader
-          onNavigate={setCurrentPage}
+          onNavigate={handleNavigation}
           onLogout={handleLogout}
           profilePhoto={currentUser?.profilePhoto || ""}
           userName={currentUser?.name || "User"}
@@ -122,38 +107,91 @@ function AppContent({
           pageSubtitle={getPageInfo().subtitle}
         />
         <main className="flex-1 overflow-y-auto">
-          {renderPage()}
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/category-management" element={<CategoryManagement />} /> {/* ✨ ADD THIS */}
+            
+            <Route path="/customers" element={<Customers />} />
+            <Route path="/customers/:id" element={<CustomerDetailsPage />} />
+            
+            <Route path="/delivery-staff" element={<DeliveryStaff />} />
+            <Route path="/user-management" element={<UserManagement />} />
+            <Route path="/home-page" element={<HomePageManagement />} />
+            <Route path="/wallet" element={<Wallet />} />
+            <Route path="/membership" element={<Membership />} />
+            <Route path="/updated-settings" element={<UpdatedSettings />} />
+            <Route 
+              path="/profile" 
+              element={
+                <ProfileSettings
+                  onProfileUpdate={handleProfileUpdate}
+                  currentUser={currentUser}
+                />
+              } 
+            />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/notifications" element={<PushNotifications />} />
+            <Route path="/help-support" element={<HelpSupport />} />
+            
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </main>
       </div>
     </div>
   );
 }
 
+function AuthLayout({ onLogin, onSignup }) {
+  const navigate = useNavigate();
+
+  return (
+    <Routes>
+      <Route 
+        path="/login" 
+        element={
+          <Login 
+            onLogin={onLogin} 
+            onNavigate={(page) => navigate(`/${page}`)} 
+          />
+        } 
+      />
+      <Route 
+        path="/signup" 
+        element={
+          <Signup 
+            onSignup={onSignup} 
+            onNavigate={(page) => navigate(`/${page}`)} 
+          />
+        } 
+      />
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+}
+
 export default function App() {
-  const [currentPage, setCurrentPage] = useState("login");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    // Check if user is already logged in
     const user = getCurrentUser();
     if (user) {
       setIsLoggedIn(true);
       setCurrentUser(user);
-      setCurrentPage("dashboard");
     }
   }, []);
 
   const handleLogin = (user) => {
     setIsLoggedIn(true);
     setCurrentUser(user);
-    setCurrentPage("dashboard");
   };
 
   const handleSignup = (user) => {
     setIsLoggedIn(true);
     setCurrentUser(user);
-    setCurrentPage("dashboard");
   };
 
   const handleLogout = () => {
@@ -161,7 +199,6 @@ export default function App() {
       logoutUser();
       setIsLoggedIn(false);
       setCurrentUser(null);
-      setCurrentPage("login");
     }
   };
 
@@ -169,30 +206,17 @@ export default function App() {
     setCurrentUser(updatedUser);
   };
 
-  if (!isLoggedIn) {
-    if (currentPage === "signup") {
-      return (
-        <Signup
-          onSignup={handleSignup}
-          onNavigate={setCurrentPage}
-        />
-      );
-    }
-    return (
-      <Login
-        onLogin={handleLogin}
-        onNavigate={setCurrentPage}
-      />
-    );
-  }
-
   return (
-    <AppContent
-      currentPage={currentPage}
-      setCurrentPage={setCurrentPage}
-      currentUser={currentUser}
-      handleLogout={handleLogout}
-      handleProfileUpdate={handleProfileUpdate}
-    />
+    <BrowserRouter>
+      {!isLoggedIn ? (
+        <AuthLayout onLogin={handleLogin} onSignup={handleSignup} />
+      ) : (
+        <DashboardLayout 
+          currentUser={currentUser} 
+          handleLogout={handleLogout} 
+          handleProfileUpdate={handleProfileUpdate} 
+        />
+      )}
+    </BrowserRouter>
   );
 }

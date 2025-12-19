@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Plus, Filter, Edit2, Trash2, Package, CheckCircle, TrendingUp, Star, X, ChevronDown } from 'lucide-react';
+import { Search, Plus, Filter, Edit2, Trash2, Package, CheckCircle, TrendingUp, Star, X, ChevronDown, Layers, RefreshCw, Download } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
@@ -12,45 +12,33 @@ import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { useApiProducts } from '../lib/hooks/useApiProducts';
 import { useDashboardStats } from '../lib/hooks/useDashboardStats';
 import { showSuccessToast } from '../lib/toast';
-import { toast } from 'sonner@2.0.3';
-import { useApiCategories } from '../lib/hooks/useApiCategories'; // ✨ Import this
+import { toast } from 'sonner';
+import { useApiCategories } from '../lib/hooks/useApiCategories';
+import { useNavigate } from 'react-router-dom';
 
 export function Products() {
+  const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
-  const [priceFilter, setPriceFilter] = useState('all');
-  const [popularityFilter, setPopularityFilter] = useState('all');
-  const [dietFilter, setDietFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
-  const [sortOrder, setSortOrder] = useState('asc');
-  
+
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  // ✨ 1. Fetch Categories
-  const { categories, refetch: refetchCategories } = useApiCategories();
-
-  // ✨ 2. Create Map for filtering (ID -> Name)
-  const categoryMap = useMemo(() => {
-    const map = {};
-    categories.forEach(cat => {
-      map[cat._id || cat.id] = (cat.name || '').toLowerCase();
-    });
-    return map;
-  }, [categories]);
+  const { categories } = useApiCategories();
 
   const {
-    products: rawProducts = [], 
+    products: rawProducts = [],
     loading: productsLoading,
     error: productsError,
     total: totalProductsApi,
     createProduct,
     updateProduct,
-    deleteProduct
+    deleteProduct,
+    refetch
   } = useApiProducts({
     search: searchQuery,
     category: selectedCategory,
@@ -59,80 +47,124 @@ export function Products() {
     limit: 50
   });
 
-  const { 
-    stats, 
-    loading: statsLoading 
-  } = useDashboardStats();
+  const { stats, loading: statsLoading } = useDashboardStats();
 
-  // Calculate 'Available' locally
-  const availableProducts = rawProducts.filter(p => (p.stock || 0) > 0).length;
-
-  // Use global stats for others
-  const totalProducts = statsLoading ? '...' : (stats?.totalProducts ?? totalProductsApi ?? 0);
+  const availableProductsCount = rawProducts.filter(p => p.inStock).length;
+  const totalProducts = totalProductsApi || rawProducts.length || 0;
+  const availableProducts = productsLoading ? '...' : availableProductsCount;
   const todaysRevenue = statsLoading ? '...' : (stats?.todaysRevenue?.toLocaleString() ?? 'N/A');
   const avgRating = statsLoading ? '...' : (stats?.avgRating ?? 'N/A');
 
-  // Filter Logic
   const validProducts = rawProducts.filter(p => p && typeof p === 'object');
 
   const filteredProducts = validProducts.filter(product => {
-    const matchesSearch = product.name?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // ✨ 3. Fix Category Filtering
-    const categoryId = product.category;
-    const productCatName = categoryMap[categoryId] || (typeof categoryId === 'string' ? categoryId.toLowerCase() : '');
-    const filterCatName = selectedCategory.toLowerCase();
-    
-    const matchesCategory = selectedCategory === 'all' || productCatName === filterCatName;
-
+    const productName = product.name || '';
+    const matchesSearch = productName.toLowerCase().includes(searchQuery.toLowerCase());
+    const productCatName = (product.categoryName || '').toLowerCase().trim();
+    const matchesCategory = selectedCategory === 'all' || productCatName === selectedCategory.toLowerCase().trim();
     let matchesStatus = true;
-    if (selectedStatus === 'instock') matchesStatus = (product.stock || 0) > 0;
-    else if (selectedStatus === 'outofstock') matchesStatus = (product.stock || 0) <= 0;
-
+    if (selectedStatus === 'instock') matchesStatus = product.inStock;
+    else if (selectedStatus === 'outofstock') matchesStatus = !product.inStock;
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const sortedProducts = [...filteredProducts].sort((a, b) => {
-    let compareValue = 0;
-    const nameA = a?.name || '';
-    const nameB = b?.name || '';
-    if (sortBy === 'name') compareValue = nameA.localeCompare(nameB);
-    
-    return sortOrder === 'asc' ? compareValue : -compareValue;
+    const nameA = (a.name || '').toLowerCase();
+    const nameB = (b.name || '').toLowerCase();
+    return nameA.localeCompare(nameB);
   });
 
+  const handleRefresh = () => {
+    if (refetch) refetch();
+    toast.success("Product data refreshed");
+  };
+
   const handleUpdateProduct = async (updatedData) => {
-    if (selectedProduct) {
-      try {
-        await updateProduct(selectedProduct.id, updatedData);
-        showSuccessToast('Product updated successfully!');
-        setEditModalOpen(false);
-        setSelectedProduct(null);
-      } catch (err) {
-        toast.error(err.message || "Failed to update product");
+    if (!selectedProduct) return;
+    
+    // 1. Validate ID
+    const productId = selectedProduct._id || selectedProduct.id;
+    if (!productId) {
+        toast.error("Error: Product ID is missing");
+        return;
+    }
+
+    const toastId = toast.loading("Updating product...");
+
+    try {
+      const payload = new FormData();
+
+      // 2. Prepare Name
+      const name = updatedData.dishName || updatedData.name;
+      if (name) {
+          payload.append('dishName', name.trim());
+          payload.append('name', name.trim());
       }
+
+      // 3. Prepare other fields (Convert to string explicitly to be safe)
+      if (updatedData.category) payload.append('category', String(updatedData.category));
+      
+      // ✨ FORCE NUMBERS: Ensure we send the new price values
+      if (updatedData.price !== undefined && updatedData.price !== null) {
+          payload.append('price', String(updatedData.price));
+      }
+      if (updatedData.originalPrice !== undefined && updatedData.originalPrice !== null) {
+          payload.append('originalPrice', String(updatedData.originalPrice));
+      }
+      if (updatedData.cost !== undefined && updatedData.cost !== null) {
+          payload.append('cost', String(updatedData.cost));
+      }
+      if (updatedData.stock !== undefined && updatedData.stock !== null) {
+          payload.append('stock', String(updatedData.stock));
+      }
+      if (updatedData.volume) payload.append('volume', String(updatedData.volume));
+      
+      // 4. Handle Image
+      if (updatedData.image instanceof File) {
+        payload.append('image', updatedData.image);
+      }
+
+      // 5. Send Request
+      await updateProduct(productId, payload);
+
+      toast.dismiss(toastId);
+      showSuccessToast('Product updated successfully!');
+
+      // 6. ✨ Aggressive Refresh Strategy
+      // Update UI immediately (close modal)
+      setEditModalOpen(false);
+      setSelectedProduct(null);
+
+      // Fetch immediately
+      if (refetch) refetch();
+      
+      // Fetch again after 1.5 seconds to catch slow database writes
+      setTimeout(() => {
+          if (refetch) refetch();
+      }, 1500);
+
+    } catch (err) {
+      toast.dismiss(toastId);
+      console.error("Update failed:", err);
+      toast.error(err.message || 'Failed to update product');
     }
   };
 
   const handleDeleteProduct = async () => {
-    if (selectedProduct) {
-      try {
-        await deleteProduct(selectedProduct.id);
-        showSuccessToast('Product deleted successfully!');
-      } catch (err) {
-        toast.error(err.message || "Failed to delete product");
-      }
+    if (!selectedProduct) return;
+    const productId = selectedProduct._id || selectedProduct.id;
+    try {
+      await deleteProduct(productId);
+      showSuccessToast('Product deleted successfully!');
+      if (refetch) refetch();
       setDeleteModalOpen(false);
       setSelectedProduct(null);
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete product');
     }
   };
 
   const handleClearAllFilters = () => {
-    setPriceFilter('all');
-    setPopularityFilter('all');
-    setDietFilter('all');
-    setSortBy('name');
-    setSortOrder('asc');
     setSelectedCategory('all');
     setSelectedStatus('all');
     setSearchQuery('');
@@ -140,330 +172,158 @@ export function Products() {
 
   return (
     <div className="p-4">
-      {/* Statistics Cards (Same as before) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-        <Card className="p-4 transition-all duration-200 hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1 font-bold">Total Products</p>
-              <h3 className="text-lg">{totalProducts}</h3>
-            </div>
-            <div className="h-9 w-9 bg-blue-50 rounded-full flex items-center justify-center">
-              <Package className="h-4 w-4 text-blue-500" />
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4 transition-all duration-200 hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1 font-bold">Available</p>
-              <h3 className="text-lg">{availableProducts}</h3>
-            </div>
-            <div className="h-9 w-9 rounded-full flex items-center justify-center" style={{ backgroundColor: '#e8f5e9' }}>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4 transition-all duration-200 hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1 font-bold">Today's Revenue</p>
-              <h3 className="text-lg">₹{todaysRevenue}</h3>
-            </div>
-            <div className="h-9 w-9 bg-purple-50 rounded-full flex items-center justify-center">
-              <TrendingUp className="h-4 w-4 text-purple-500" />
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4 transition-all duration-200 hover:shadow-md">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1 font-bold">Avg Rating</p>
-              <h3 className="text-lg">{avgRating}</h3>
-            </div>
-            <div className="h-9 w-9 bg-yellow-50 rounded-full flex items-center justify-center">
-              <Star className="h-4 w-4 text-yellow-500" />
-            </div>
-          </div>
-        </Card>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Products / Management</h2>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" className="gap-2" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => toast.info("Exporting...")}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
+          <Button className="bg-red-500 hover:bg-red-600 gap-2" onClick={() => setAddModalOpen(true)}>
+            <Plus className="h-4 w-4" /> Add Product
+          </Button>
+        </div>
       </div>
 
-      <Card className="p-6">
-        <div className="space-y-4">
-          <div className="flex items-center gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+         <Card className="p-4 hover:shadow-md transition-all"><div className="flex justify-between"><div><p className="text-sm text-gray-500 font-bold">Total Products</p><h3 className="text-lg">{totalProducts}</h3></div><div className="h-9 w-9 bg-blue-50 rounded-full flex items-center justify-center text-blue-500"><Package className="h-4 w-4"/></div></div></Card>
+         <Card className="p-4 hover:shadow-md transition-all"><div className="flex justify-between"><div><p className="text-sm text-gray-500 font-bold">Available</p><h3 className="text-lg">{availableProducts}</h3></div><div className="h-9 w-9 bg-green-50 rounded-full flex items-center justify-center text-green-600"><CheckCircle className="h-4 w-4"/></div></div></Card>
+         <Card className="p-4 hover:shadow-md transition-all"><div className="flex justify-between"><div><p className="text-sm text-gray-500 font-bold">Revenue</p><h3 className="text-lg">₹{todaysRevenue}</h3></div><div className="h-9 w-9 bg-purple-50 rounded-full flex items-center justify-center text-purple-500"><TrendingUp className="h-4 w-4"/></div></div></Card>
+         <Card className="p-4 hover:shadow-md transition-all"><div className="flex justify-between"><div><p className="text-sm text-gray-500 font-bold">Avg Rating</p><h3 className="text-lg">{avgRating}</h3></div><div className="h-9 w-9 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-500"><Star className="h-4 w-4"/></div></div></Card>
+      </div>
+
+      <Card className="p-6 bg-gray-50/50 border-none shadow-none">
+        <div className="space-y-4 mb-2">
+          <div className="flex items-center gap-4 bg-white p-4 rounded-lg border shadow-sm">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search products..." 
-                className="pl-10 border border-gray-300" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <Input placeholder="Search products..." className="pl-10 border border-gray-300" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}/>
             </div>
-            
-            {/* ✨ Category Filter Dropdown */}
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-48 border border-gray-300">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
+              <SelectTrigger className="w-48 border border-gray-300"><SelectValue placeholder="All Categories" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 {categories.map((cat) => (
-                  <SelectItem key={cat._id || cat.id} value={cat.name}>
+                  <SelectItem key={cat._id || cat.id} value={(cat.name || '').toLowerCase()}>
                     {cat.displayName || cat.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-40 border border-gray-300">
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
+              <SelectTrigger className="w-40 border border-gray-300"><SelectValue placeholder="All Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="instock">In Stock</SelectItem>
                 <SelectItem value="outofstock">Out of Stock</SelectItem>
               </SelectContent>
             </Select>
-
-            <div className="relative">
-              <Button 
-                variant="outline"
-                onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
-                className="gap-2 border border-gray-300"
-              >
-                <Filter className="h-4 w-4" />
-                More
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <Button 
-              className="bg-red-500 hover:bg-red-600 border border-red-500"
-              onClick={() => setAddModalOpen(true)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
+            <Button variant="outline" onClick={() => setMoreDropdownOpen(!moreDropdownOpen)} className="gap-2 border border-gray-300">
+              <Filter className="h-4 w-4" /> More <ChevronDown className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* Filter Buttons Row */}
           {moreDropdownOpen && (
-            <div className="flex items-center gap-2 flex-wrap p-4 bg-gray-50 rounded-lg">
-              <Select value={priceFilter} onValueChange={setPriceFilter}>
-                <SelectTrigger className="w-36 border border-gray-300">
-                  <SelectValue placeholder="All Prices" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Prices</SelectItem>
-                  <SelectItem value="low">Low (0-100)</SelectItem>
-                  <SelectItem value="medium">Medium (100-300)</SelectItem>
-                  <SelectItem value="high">High (300+)</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={popularityFilter} onValueChange={setPopularityFilter}>
-                <SelectTrigger className="w-40 border border-gray-300">
-                  <SelectValue placeholder="All Popularity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Popularity</SelectItem>
-                  <SelectItem value="trending">Trending</SelectItem>
-                  <SelectItem value="popular">Popular</SelectItem>
-                  <SelectItem value="new">New</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={dietFilter} onValueChange={setDietFilter}>
-                <SelectTrigger className="w-40 border border-gray-300">
-                  <SelectValue placeholder="All Diet Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Diet Types</SelectItem>
-                  <SelectItem value="veg">Vegetarian</SelectItem>
-                  <SelectItem value="vegan">Vegan</SelectItem>
-                  <SelectItem value="organic">Organic</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-40 border border-gray-300">
-                  <SelectValue placeholder="Sort by Name" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Sort by Name</SelectItem>
-                  <SelectItem value="price">Sort by Price</SelectItem>
-                  <SelectItem value="stock">Sort by Stock</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="border border-gray-300"
-              >
-                {sortOrder === 'asc' ? '↑ ASC' : '↓ DESC'}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearAllFilters}
-                className="gap-1 border border-gray-300"
-              >
-                <X className="h-3 w-3" />
-                Clear All
+            <div className="flex items-center gap-2 flex-wrap p-4 bg-white rounded-lg border shadow-sm">
+              <Button variant="outline" size="sm" onClick={handleClearAllFilters} className="gap-1 border border-gray-300">
+                <X className="h-3 w-3" /> Clear All
               </Button>
             </div>
           )}
         </div>
 
-        {productsLoading && <div className="text-center py-12 text-muted-foreground">Loading products...</div>}
-        {productsError && <div className="text-center py-12 text-red-500">Error: {productsError}</div>}
-        
-        {!productsLoading && !productsError && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-              {sortedProducts.map((product) => {
-                if (!product) return null;
-                // ✨ Resolve category name
-                let categoryName = 'Uncategorized';
-                if (product.category && typeof product.category === 'object' && product.category.name) {
-                   categoryName = product.category.name;
-                } else if (categoryMap[product.category]) {
-                   categoryName = categoryMap[product.category];
-                } else if (typeof product.category === 'string') {
-                   // Try case-insensitive lookup
-                   const found = Object.keys(categoryMap).find(key => key.toLowerCase() === product.category.toLowerCase());
-                   if(found) categoryName = categoryMap[found];
-                   else categoryName = product.category; // Show raw ID if nothing else works
-                }
+        {!productsLoading && !productsError && sortedProducts.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-2">
+            {sortedProducts.map((product) => {
+              if (!product) return null;
+              const categoryName = product.categoryName || 'Uncategorized';
+              const productName = product.name || 'Unknown Name';
 
-                return (
-                  <Card key={product.id} className="overflow-hidden transition-all duration-200 hover:shadow-lg">
-                    <div className="relative h-48 bg-gray-100">
-                      <ImageWithFallback 
-                        src={product.image} 
-                        alt={product.name || 'Product Image'}
-                        className="w-full h-full object-cover"
-                      />
-                      <Badge 
-                        className="absolute top-2 right-2 text-xs"
-                        style={{ 
-                          backgroundColor: (product.stock || 0) > 0 ? '#e8f5e9' : '#f5f5f5',
-                          color: (product.stock || 0) > 0 ? '#2e7d32' : '#757575'
-                        }}
-                      >
-                        {(product.stock || 0) > 0 ? 'In Stock' : 'Out of Stock'}
-                      </Badge>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-medium mb-1">{product.name || 'Unknown Name'}</h3>
-                      {/* ✨ Show resolved category name */}
-                      <p className="text-xs text-muted-foreground mb-2 capitalize">{categoryName}</p>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-semibold">₹{product.price || 0}</span>
-                        <span className="text-xs text-muted-foreground">{product.unit || 'unit'}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground mb-3">
-                        Stock: {product.stock || 0} 
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => {
-                            // ✨ FIX: Normalize the product data before editing
-                            // If category is an object, extract its ID. Otherwise use it as is.
-                            const normalizedProduct = {
-                              ...product,
-                              category: product.category && typeof product.category === 'object' 
-                                ? (product.category._id || product.category.id) 
-                                : product.category
-                            };
-                            setSelectedProduct(product);
-                            setEditModalOpen(true);
-                          }}
-                        >
-                          <Edit2 className="h-3 w-3 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => {
-                            setSelectedProduct(product);
-                            setDeleteModalOpen(true);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Delete
-                        </Button>
+              return (
+                <Card key={product.id || product._id} className="overflow-hidden transition-all duration-300 hover:shadow-xl border border-gray-200 bg-white flex flex-col h-full group">
+                  <div className="relative h-48 bg-gray-50 border-b flex items-center justify-center overflow-hidden">
+                    <ImageWithFallback src={product.image} alt={productName} className="w-full h-full object-contain transition-transform duration-100 group-hover:scale-105" />
+                    <Badge className="absolute top-2 right-2 px-2 py-0.5 text-[10px] font-semibold shadow-sm z-10" style={{ backgroundColor: product.inStock ? '#dcfce7' : '#fee2e2', color: product.inStock ? '#166534' : '#b91c1c', border: product.inStock ? '1px solid #86efac' : '1px solid #fca5a5' }}>
+                      {product.inStock ? 'In Stock' : 'Out of Stock'}
+                    </Badge>
+                  </div>
+
+                  <div className="p-5 flex flex-col flex-1">
+                    <div className="px-2 mb-4 flex-1">
+                      <h3 className="font-semibold text-base text-gray-900 mb-1 leading-snug line-clamp-2 min-h-[40px]" title={productName}>
+                        {productName}
+                      </h3>
+                      <p className="text-xs text-gray-500 capitalize mb-2 truncate">{categoryName}</p>
+                      <div className="flex items-center justify-between mt-3">
+                        {/* ✨ Display Price */}
+                        <span className="text-2xl font-bold text-gray-900">₹{product.price || 0}</span>
                       </div>
                     </div>
-                  </Card>
-                );
-              })}
-            </div>
 
-            {sortedProducts.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                No products found
-              </div>
-            )}
-          </>
+                    <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-100 mt-auto">
+                      <Button variant="outline" size="sm" className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:text-purple-800 transition-colors flex items-center justify-center"
+                        onClick={() => navigate(`/products/${product.id || product._id}/variants`)}>
+                        <Layers className="h-4 w-4 mr-1" /> Variants
+                      </Button>
+
+                      <Button variant="outline" size="sm" className="hover:bg-blue-50 hover:text-blue-600 transition-colors border-gray-300 flex items-center justify-center"
+                        onClick={() => {
+                          setSelectedProduct({
+                            ...product,
+                            dishName: product.name // Map for form
+                          });
+                          setEditModalOpen(true);
+                        }}>
+                        <Edit2 className="h-4 w-4 mr-2" /> Edit
+                      </Button>
+
+                      <Button variant="outline" size="sm" className="hover:bg-red-50 hover:text-red-600 transition-colors border-gray-300 text-red-500 flex items-center justify-center"
+                        onClick={() => { setSelectedProduct(product); setDeleteModalOpen(true); }}>
+                        <Trash2 className="h-4 w-4 mr-2" /> Delete
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
         )}
+
+        {productsLoading && <p className="text-center mt-8">Loading products...</p>}
+        {!productsLoading && sortedProducts.length === 0 && <p className="text-center mt-8">No products found.</p>}
       </Card>
 
-      <AddProductModal
-        open={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        onAdd={createProduct} 
-        categories={categories} // ✨ Pass categories
-        onCategoryCreate={refetchCategories} // ✨ Refresh logic
-      />
+      <AddProductModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onAdd={createProduct} categories={categories} />
 
       {selectedProduct && (
         <>
           <EditModal
             open={editModalOpen}
-            onOpenChange={(open) => {
-              setEditModalOpen(open);
-              if (!open) setSelectedProduct(null);
-            }}
-            onSave={(updatedData) => handleUpdateProduct(updatedData)}
+            onOpenChange={(open) => { setEditModalOpen(open); if (!open) setSelectedProduct(null); }}
+            onSave={handleUpdateProduct}
             title="Edit Product"
             data={selectedProduct}
             fields={[
-              { key: 'name', label: 'Product Name', type: 'text' },
-              { 
-                key: 'category', 
-                label: 'Category', 
-                type: 'select', 
-                options: categories.map(c => ({ 
-                  label: c.name || c.displayName, 
-                  value: c._id || c.id 
-                })) // ✨ Dynamic Options
-              },
-              { key: 'price', label: 'Price (₹)', type: 'text' },
+              { key: 'dishName', label: 'Product Name', type: 'text' },
+              { key: 'category', label: 'Category', type: 'select', options: categories.map(c => ({ label: c.displayName || c.name, value: c._id || c.id })) },
+              { key: 'price', label: 'Price (₹)', type: 'number' },
+              { key: 'originalPrice', label: 'Original Price (₹)', type: 'number' },
+              { key: 'cost', label: 'Cost (₹)', type: 'number' },
               { key: 'stock', label: 'Stock', type: 'number' },
-              { key: 'unit', label: 'Unit', type: 'text' },
+              { key: 'volume', label: 'Volume/Size', type: 'text' },
+              { key: 'image', label: 'Product Image', type: 'file' },
             ]}
           />
-
           <DeleteConfirmationModal
             open={deleteModalOpen}
-            onOpenChange={(open) => {
-              setDeleteModalOpen(open);
-              if (!open) setSelectedProduct(null);
-            }}
+            onOpenChange={(open) => { setDeleteModalOpen(open); if (!open) setSelectedProduct(null); }}
             onConfirm={handleDeleteProduct}
             title="Delete Product"
-            description={`Are you sure you want to delete ${selectedProduct.name || 'this product'}? This action cannot be undone.`}
+            description={`Are you sure you want to delete "${selectedProduct.name || 'this product'}"? This action cannot be undone.`}
           />
         </>
       )}

@@ -1,439 +1,194 @@
-import { useState, useCallback } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { Checkbox } from "../ui/checkbox";
-import { UserPlus, X, Check } from "lucide-react";
-import { addUserToSystem } from "../../lib/auth";
+import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Check, X, Shield } from 'lucide-react';
+import { toast } from 'sonner';
+
+// Permissions list from your controller
+const PANEL_PERMISSIONS = [
+  "dashboard", "inventory", "orders", "delivery", "customers", "reports", 
+  "products", "settings", "userManagement", "profile", "membership", 
+  "analytics", "auditLogs", "billing", "content", "wallet", 
+  "helpSupport", "apiAccess"
+];
 
 export function AddUserModal({ open, onOpenChange, onSave }) {
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    phone: "",
-    role: "User",
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    password: '',
+    permissions: ['dashboard', 'orders'] // Default as per controller
   });
 
-  const [permissions, setPermissions] = useState({
-    // Core
-    dashboard: true,
-    products: true,
-    orders: true,
-    customers: true,
-    deliveryStaff: false,
-    membership: false,
-    profile: true,
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
-    // Analytics & Reports
-    analytics: false,
-    auditLogs: false,
-    reports: false,
-
-    // Operations
-    userManagement: false,
-    wallet: false,
-    billing: false,
-    notifications: false,
-    contentManagement: false,
-    homepage: false,
-
-    // Development
-    settings: false,
-    helpSupport: false,
-    integrations: false,
-    apiAccess: false,
-    security: false,
-  });
-
-  const handlePermissionChange = useCallback((key) => {
-    setPermissions((prev) => {
-      const currentValue = prev[key];
-      const newPermissions = { ...prev, [key]: !currentValue };
-      console.log(
-        "Toggling",
-        key,
-        "from",
-        currentValue,
-        "to",
-        !currentValue,
-      );
-      return newPermissions;
-    });
-  }, []);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const newUser = {
-      id: Date.now().toString(),
-      ...formData,
-      permissions,
-      status: "active",
-      createdAt: new Date().toISOString(),
-    };
-
-    addUserToSystem(newUser);
-    onSave(newUser);
-    onOpenChange(false);
-
-    // Reset form
-    setFormData({
-      name: "",
-      email: "",
-      password: "",
-      phone: "",
-      role: "User",
-    });
-    setPermissions({
-      dashboard: true,
-      products: true,
-      orders: true,
-      customers: true,
-      deliveryStaff: false,
-      membership: false,
-      profile: true,
-      analytics: false,
-      auditLogs: false,
-      reports: false,
-      userManagement: false,
-      wallet: false,
-      billing: false,
-      notifications: false,
-      contentManagement: false,
-      homepage: false,
-      settings: false,
-      helpSupport: false,
-      integrations: false,
-      apiAccess: false,
-      security: false,
+  const togglePermission = (permission) => {
+    setFormData(prev => {
+      const current = prev.permissions;
+      if (current.includes(permission)) {
+        return { ...prev, permissions: current.filter(p => p !== permission) };
+      } else {
+        return { ...prev, permissions: [...current, permission] };
+      }
     });
   };
 
-  const PermissionCheckbox = ({ permissionKey, title, description }) => (
-    <div className="flex items-start gap-2">
-      <Checkbox
-        id={permissionKey}
-        checked={permissions[permissionKey]}
-        onCheckedChange={() => handlePermissionChange(permissionKey)}
-        className="mt-0.5 h-4 w-4 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-      />
-      <div className="flex-1">
-        <Label
-          htmlFor={permissionKey}
-          className="cursor-pointer text-xs font-normal leading-tight"
-        >
-          {title}
-        </Label>
-        {description && (
-          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-            {description}
-          </p>
-        )}
-      </div>
-    </div>
-  );
+  const toggleAllPermissions = () => {
+    if (formData.permissions.length === PANEL_PERMISSIONS.length) {
+      setFormData(prev => ({ ...prev, permissions: [] }));
+    } else {
+      setFormData(prev => ({ ...prev, permissions: [...PANEL_PERMISSIONS] }));
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    // Basic Validation
+    if (!formData.firstName || !formData.email || !formData.phone || !formData.password) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    // Pass data to parent handler
+    onSave(formData);
+    
+    // Reset form (optional, depending on UX preference)
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      password: '',
+      permissions: ['dashboard', 'orders']
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0 bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col [&>button]:hidden sm:max-w-2xl">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Add New User</DialogTitle>
-          <DialogDescription>Add a new user to the system</DialogDescription>
-        </DialogHeader>
-
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 bg-white rounded-xl">
+        
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
-          <h2 className="text-base font-medium">Add New User</h2>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <div className="px-6 py-4 border-b bg-gray-50 flex-shrink-0">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-gray-900">Add New Panel User</DialogTitle>
+            <DialogDescription className="text-sm text-gray-500">
+              Create a new staff account with specific permissions.
+            </DialogDescription>
+          </DialogHeader>
         </div>
 
-        {/* Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <form onSubmit={handleSubmit} id="add-user-form">
-            {/* Basic Information */}
-            <div className="mb-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="name" className="text-xs">
-                    Full Name
-                  </Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    placeholder="Enter full name"
-                    required
-                    className="text-xs h-9 mt-1"
-                  />
+        {/* Scrollable Form Body */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <form id="add-user-form" onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* Personal Details */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <span className="h-6 w-6 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xs">1</span>
+                Personal Information
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name <span className="text-red-500">*</span></Label>
+                  <Input id="firstName" name="firstName" placeholder="e.g. John" value={formData.firstName} onChange={handleChange} required />
                 </div>
-                <div>
-                  <Label htmlFor="email" className="text-xs">
-                    Email Address
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="Enter email address"
-                    required
-                    className="text-xs h-9 mt-1"
-                  />
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input id="lastName" name="lastName" placeholder="e.g. Doe" value={formData.lastName} onChange={handleChange} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                <div>
-                  <Label htmlFor="password" className="text-xs">
-                    Password
-                  </Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        password: e.target.value,
-                      })
-                    }
-                    placeholder="Enter password"
-                    required
-                    className="text-xs h-9 mt-1"
-                  />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address <span className="text-red-500">*</span></Label>
+                  <Input id="email" name="email" type="email" placeholder="john@example.com" value={formData.email} onChange={handleChange} required />
                 </div>
-                <div>
-                  <Label htmlFor="phone" className="text-xs">
-                    Phone Number
-                  </Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    placeholder="Enter phone number"
-                    className="text-xs h-9 mt-1"
-                  />
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number <span className="text-red-500">*</span></Label>
+                  <Input id="phone" name="phone" placeholder="+91 9876543210" value={formData.phone} onChange={handleChange} required />
                 </div>
               </div>
-              <div className="mt-3">
-                <Label htmlFor="role" className="text-xs">
-                  Role
-                </Label>
-                <select
-                  id="role"
-                  value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value })
-                  }
-                  className="w-full text-xs h-9 mt-1 border border-gray-300 rounded-md px-3"
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
+                <Input id="password" name="password" type="password" placeholder="••••••••" value={formData.password} onChange={handleChange} required />
+              </div>
+            </div>
+
+            <div className="h-px bg-gray-100 my-2" />
+
+            {/* Permissions */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <span className="h-6 w-6 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center text-xs">2</span>
+                  Access Permissions
+                </h3>
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={toggleAllPermissions}
+                  className="text-xs h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                 >
-                  <option value="User">User</option>
-                  <option value="Manager">Manager</option>
-                  <option value="Admin">Admin</option>
-                  <option value="Super Admin">Super Admin</option>
-                </select>
+                  {formData.permissions.length === PANEL_PERMISSIONS.length ? 'Deselect All' : 'Select All'}
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {PANEL_PERMISSIONS.map((perm) => {
+                  const isSelected = formData.permissions.includes(perm);
+                  // Format permission name (camelCase to Title Case)
+                  const label = perm.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                  
+                  return (
+                    <div 
+                      key={perm}
+                      onClick={() => togglePermission(perm)}
+                      className={`
+                        flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all duration-200 select-none
+                        ${isSelected 
+                          ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'}
+                      `}
+                    >
+                      <div className={`
+                        h-5 w-5 rounded border flex items-center justify-center transition-colors
+                        ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-300'}
+                      `}>
+                        {isSelected && <Check className="h-3.5 w-3.5" />}
+                      </div>
+                      <span className={`text-xs font-medium ${isSelected ? 'text-blue-700' : 'text-gray-600'}`}>
+                        {label}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Permissions & Access */}
-            <div className="mb-4">
-              <h4 className="text-xs font-medium mb-3 text-red-600">
-                * Permissions & Access
-              </h4>
-
-              {/* Core Section */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-gray-700 font-semibold min-w-[180px]">
-                    Core
-                  </span>
-                  <div className="h-px bg-gray-200 flex-1"></div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-                  <PermissionCheckbox
-                    permissionKey="dashboard"
-                    title="Dashboard"
-                    description="Main overview and metrics"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="products"
-                    title="Products"
-                    description="Product management"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="orders"
-                    title="Orders"
-                    description="Order management"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="customers"
-                    title="Customers"
-                    description="Customer management"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="deliveryStaff"
-                    title="Delivery Staff"
-                    description="Staff management"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="membership"
-                    title="Membership"
-                    description="Membership tiers"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="profile"
-                    title="Profile"
-                    description="User profile access"
-                  />
-                </div>
-              </div>
-
-              {/* Analytics & Reports Section */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-gray-700 font-semibold min-w-[180px]">
-                    Analytics & Reports
-                  </span>
-                  <div className="h-px bg-gray-200 flex-1"></div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-                  <PermissionCheckbox
-                    permissionKey="analytics"
-                    title="Analytics"
-                    description="Advanced analytics dashboard"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="auditLogs"
-                    title="Audit Logs"
-                    description="System audit trails"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="reports"
-                    title="Reports"
-                    description="View and generate reports"
-                  />
-                </div>
-              </div>
-
-              {/* Operations Section */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-gray-700 font-semibold min-w-[180px]">
-                    Operations
-                  </span>
-                  <div className="h-px bg-gray-200 flex-1"></div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-                  <PermissionCheckbox
-                    permissionKey="userManagement"
-                    title="User Management"
-                    description="Manage users and permissions"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="wallet"
-                    title="Wallet"
-                    description="Wallet management"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="billing"
-                    title="Billing"
-                    description="Payment and subscription management"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="notifications"
-                    title="Notifications"
-                    description="Email and push notifications"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="contentManagement"
-                    title="Content Management"
-                    description="Content creation and editing"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="homepage"
-                    title="Homepage"
-                    description="Homepage management"
-                  />
-                </div>
-              </div>
-
-              {/* Development Section */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-gray-700 font-semibold min-w-[180px]">
-                    Development
-                  </span>
-                  <div className="h-px bg-gray-200 flex-1"></div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-                  <PermissionCheckbox
-                    permissionKey="settings"
-                    title="Settings"
-                    description="System configuration"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="helpSupport"
-                    title="Help & Support"
-                    description="Help and support access"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="integrations"
-                    title="Integrations"
-                    description="Third party integrations"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="apiAccess"
-                    title="Api Access"
-                    description="API keys and documentation"
-                  />
-                  <PermissionCheckbox
-                    permissionKey="security"
-                    title="Security"
-                    description="Security settings and logs"
-                  />
-                </div>
-              </div>
-            </div>
           </form>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-9 text-xs px-4"
-          >
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 flex-shrink-0">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            form="add-user-form"
-            className="bg-blue-600 hover:bg-blue-700 h-9 text-xs px-4"
-          >
-            Add User
+          <Button type="submit" form="add-user-form" className="bg-red-500 hover:bg-red-600 text-white px-6">
+            Create User
           </Button>
         </div>
+
       </DialogContent>
     </Dialog>
   );

@@ -5,6 +5,7 @@ import { UpdatedHeader } from "./components/UpdatedHeader";
 import { Dashboard } from "./pages/Dashboard";
 import { Orders } from "./pages/Orders";
 import { Products } from "./pages/Products";
+import { ProductVariants } from "./pages/ProductVariants";
 import { CategoryManagement } from "./pages/CategoryManagement"; // ✨ ADD THIS
 import { Customers } from "./pages/Customers";
 import { CustomerDetailsPage } from './pages/CustomerDetailsPage';
@@ -93,6 +94,8 @@ function DashboardLayout({ currentUser, handleLogout, handleProfileUpdate }) {
         currentPage={currentPage}
         onPageChange={handleNavigation}
         onLogout={handleLogout}
+        // ✨ PASS THE FULL USER OBJECT (contains permissions)
+        currentUser={currentUser}
         userRole={currentUser?.role || "User"}
       />
       <div className="flex flex-col h-full ml-20">
@@ -112,6 +115,7 @@ function DashboardLayout({ currentUser, handleLogout, handleProfileUpdate }) {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/products" element={<Products />} />
+            <Route path="/products/:id/variants" element={<ProductVariants />} />
             <Route path="/category-management" element={<CategoryManagement />} /> {/* ✨ ADD THIS */}
             
             <Route path="/customers" element={<Customers />} />

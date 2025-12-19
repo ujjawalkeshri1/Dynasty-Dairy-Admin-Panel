@@ -108,4 +108,48 @@ export const productService = {
   async toggleProductStatus(id) {
     return apiClient.patch(buildUrl(API_ENDPOINTS.PRODUCTS.TOGGLE_STATUS, { id }));
   },
+
+  // Variant Management
+  async getProductById(id) {
+    return apiClient.get(buildUrl(API_ENDPOINTS.PRODUCTS.GET, { id }));
+  },
+
+  async addVariantToProduct(productId, variantData) {
+    // Prepare the data for JSON request
+    const requestData = {
+      label: variantData.label,
+      value: parseFloat(variantData.value),
+      unit: variantData.unit,
+      price: parseFloat(variantData.price),
+      stock: parseInt(variantData.stock),
+    };
+
+    // Handle image attachment
+    if (variantData.imageData) {
+      if (variantData.imageData.type === 'file') {
+        // For file uploads, we still need FormData
+        const formData = new FormData();
+        Object.keys(requestData).forEach(key => {
+          formData.append(key, requestData[key]);
+        });
+        formData.append('image', variantData.imageData.value);
+        const url = buildUrl(API_ENDPOINTS.PRODUCTS.VARIANTS.CREATE, { id: productId });
+        return apiClient.post(url, formData);
+      } else if (variantData.imageData.type === 'url') {
+        requestData.imageUrl = variantData.imageData.value;
+      }
+    }
+
+    // Send as JSON for non-file uploads
+    const url = buildUrl(API_ENDPOINTS.PRODUCTS.VARIANTS.CREATE, { id: productId });
+    return apiClient.post(url, requestData);
+  },
+
+  async deleteVariant(productId, variantId) {
+    const url = buildUrl(API_ENDPOINTS.PRODUCTS.VARIANTS.DELETE, {
+      id: productId,
+      variantId: variantId,
+    });
+    return apiClient.delete(url);
+  },
 };

@@ -1,279 +1,234 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
+import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Button } from '../ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Checkbox } from '../ui/checkbox';
-import { updateUserInSystem } from '../../lib/auth'; // Removed AuthUser import
+import { Check, Shield, Power } from 'lucide-react'; // ✨ Added Power import
+import { toast } from 'sonner';
 
-// Removed EditUserModalProps interface
-// Removed Permission interface
+// ✨ Internal CustomToggle Component to avoid import errors
+function CustomToggle({ label, checked, onChange, activeColor = "bg-green-500" }) {
+  // Extract color name (e.g., 'green' from 'bg-green-500') for dynamic classes
+  const colorName = activeColor.split('-')[1]; 
+  
+  return (
+    <div 
+      onClick={() => onChange(!checked)}
+      className={`
+        flex items-center justify-between w-full p-3 rounded-lg border cursor-pointer transition-all duration-200
+        ${checked ? `border-${colorName}-200 bg-${colorName}-50` : 'border-gray-200 bg-white hover:bg-gray-50'}
+      `}
+    >
+      <div className="flex items-center gap-3">
+        <div className={`
+          h-10 w-10 rounded-full flex items-center justify-center transition-colors
+          ${checked ? `bg-white text-${colorName}-600 shadow-sm` : 'bg-gray-100 text-gray-400'}
+        `}>
+          {checked ? <Check className="h-5 w-5" /> : <Power className="h-5 w-5" />}
+        </div>
+        <span className={`text-sm font-medium ${checked ? 'text-gray-900' : 'text-gray-500'}`}>
+          {label}
+        </span>
+      </div>
+      
+      <div className={`
+        w-11 h-6 rounded-full transition-colors relative
+        ${checked ? activeColor : 'bg-gray-300'}
+      `}>
+        <div className={`
+          absolute top-1 left-1 bg-white w-4 h-4 rounded-full shadow transition-transform duration-200
+          ${checked ? 'translate-x-5' : 'translate-x-0'}
+        `} />
+      </div>
+    </div>
+  );
+}
 
-export function EditUserModal({ open, onOpenChange, onSave, user }) { // Removed props type
-  const [formData, setFormData] = useState({ // Removed <Partial<AuthUser>>
-    name: '',
+// Permissions list
+const PANEL_PERMISSIONS = [
+  "dashboard", "inventory", "orders", "delivery", "customers", "reports", 
+  "products", "settings", "userManagement", "profile", "membership", 
+  "analytics", "auditLogs", "billing", "content", "wallet", 
+  "helpSupport", "apiAccess"
+];
+
+export function EditUserModal({ open, onOpenChange, onSave, user }) {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
     email: '',
-    role: 'User',
-    status: 'active',
+    phone: '',
+    permissions: [],
+    isEnabled: true
   });
 
-  const [permissions, setPermissions] = useState([ // Removed <Permission[]>
-    // Core section
-    { id: 'dashboard', label: 'Dashboard', description: 'Main overview and metrics', checked: false },
-    { id: 'products', label: 'Products', description: 'Product management', checked: false },
-    { id: 'orders', label: 'Orders', description: 'Order management', checked: false },
-    { id: 'customers', label: 'Customers', description: 'Customer management', checked: false },
-    { id: 'delivery-staff', label: 'Delivery Staff', description: 'Staff management', checked: false },
-    { id: 'membership', label: 'Membership', description: 'Membership tiers', checked: false },
-    { id: 'profile', label: 'Profile', description: 'User profile access', checked: false },
-    
-    // Analytics & Reports section
-    { id: 'analytics', label: 'Analytics', description: 'Advanced analytics dashboard', checked: false },
-    { id: 'audit-logs', label: 'Audit Logs', description: 'System audit trails', checked: false },
-    { id: 'reports', label: 'Reports', description: 'View and generate reports', checked: false },
-    
-    // Operations section
-    { id: 'user-management', label: 'User Management', description: 'Manage users and permissions', checked: false },
-    { id: 'wallet', label: 'Wallet', description: 'Wallet management', checked: false },
-    { id: 'billing', label: 'Billing', description: 'Payment and subscription management', checked: false },
-    { id: 'notifications', label: 'Notifications', description: 'Email and push notifications', checked: false },
-    { id: 'content-management', label: 'Content Management', description: 'Content creation and editing', checked: false },
-    { id: 'homepage', label: 'Homepage', description: 'Homepage management', checked: false },
-    
-    // Development section
-    { id: 'settings', label: 'Settings', description: 'System configuration', checked: false },
-    { id: 'help-support', label: 'Help & Support', description: 'Help and support access', checked: false },
-    { id: 'integrations', label: 'Integrations', description: 'Third party integrations', checked: false },
-    { id: 'api-access', label: 'Api Access', description: 'API keys and documentation', checked: false },
-    { id: 'security', label: 'Security', description: 'Security settings and logs', checked: false },
-  ]);
-
+  // Load user data when modal opens
   useEffect(() => {
-    if (user) {
+    if (open && user) {
       setFormData({
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status || 'active',
+        id: user.id || user._id,
+        firstName: user.firstName || user.name?.split(' ')[0] || '',
+        lastName: user.lastName || user.name?.split(' ').slice(1).join(' ') || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        permissions: user.permissions || [],
+        isEnabled: user.isEnabled ?? true
       });
+    }
+  }, [open, user]);
 
-      // Set some default permissions based on role
-      const defaultPermissions = [...permissions];
-      if (user.role === 'Super Admin' || user.role === 'Admin') {
-        // Admins get all permissions
-        defaultPermissions.forEach(p => p.checked = true);
+  const togglePermission = (permission) => {
+    setFormData(prev => {
+      const current = prev.permissions;
+      if (current.includes(permission)) {
+        return { ...prev, permissions: current.filter(p => p !== permission) };
       } else {
-        // Regular users get basic permissions
-        defaultPermissions.forEach(p => {
-          p.checked = ['dashboard', 'orders', 'products', 'customers', 'profile'].includes(p.id);
-        });
+        return { ...prev, permissions: [...current, permission] };
       }
-      setPermissions(defaultPermissions);
-    }
-  }, [user, open]);
+    });
+  };
 
-  const handleSubmit = (e) => { // Removed : React.FormEvent
+  const toggleAllPermissions = () => {
+    if (formData.permissions.length === PANEL_PERMISSIONS.length) {
+      setFormData(prev => ({ ...prev, permissions: [] }));
+    } else {
+      setFormData(prev => ({ ...prev, permissions: [...PANEL_PERMISSIONS] }));
+    }
+  };
+
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (user) {
-      const updatedUser = { // Removed : AuthUser
-        ...user,
-        ...formData,
-        name: formData.name, // Removed !
-        email: formData.email, // Removed !
-        role: formData.role, // Removed !
-        status: formData.status || 'active',
-      };
-      
-      updateUserInSystem(user.id, formData);
-      onSave(updatedUser);
-      onOpenChange(false);
-    }
-  };
+    
+    // The backend updateUser controller only accepts 'permissions' and 'isEnabled'
+    const payload = {
+      id: formData.id,
+      permissions: formData.permissions,
+      isEnabled: formData.isEnabled
+    };
 
-  const handlePermissionToggle = (id) => { // Removed : string
-    setPermissions(permissions.map(p => 
-      p.id === id ? { ...p, checked: !p.checked } : p
-    ));
+    onSave(payload);
   };
-
-  const categoryPermissions = [
-    { 
-      category: 'Core', 
-      items: ['dashboard', 'products', 'orders', 'customers', 'delivery-staff', 'membership', 'profile'] 
-    },
-    { 
-      category: 'Analytics & Reports', 
-      items: ['analytics', 'audit-logs', 'reports'] 
-    },
-    { 
-      category: 'Operations', 
-      items: ['user-management', 'wallet', 'billing', 'notifications', 'content-management', 'homepage'] 
-    },
-    { 
-      category: 'Development', 
-      items: ['settings', 'help-support', 'integrations', 'api-access', 'security'] 
-    },
-  ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0 bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col [&>button]:hidden sm:max-w-2xl">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Edit User</DialogTitle>
-          <DialogDescription>Edit user information and permissions</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 bg-white rounded-xl">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
-          <h2 className="text-base font-medium">Edit User</h2>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="h-6 w-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <div className="px-6 py-4 border-b bg-gray-50 flex-shrink-0">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-gray-900">Edit User: {user?.name}</DialogTitle>
+            <DialogDescription className="text-sm text-gray-500">
+              Update permissions and account status.
+            </DialogDescription>
+          </DialogHeader>
         </div>
 
-        {/* Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <form onSubmit={handleSubmit} id="edit-user-form">
-            {/* Full Name and Email */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="name" className="text-xs font-normal">
-                  Full Name <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  className="h-9 text-xs"
-                />
+        {/* Scrollable Form Body */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <form id="edit-user-form" onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* Read-Only Info */}
+            <div className="space-y-4 opacity-70 cursor-not-allowed">
+              <h3 className="text-sm font-semibold text-gray-900">User Information (Read-Only)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>First Name</Label>
+                  <Input value={formData.firstName} disabled className="bg-gray-50" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Name</Label>
+                  <Input value={formData.lastName} disabled className="bg-gray-50" />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-xs font-normal">
-                  Email <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                  className="h-9 text-xs"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={formData.email} disabled className="bg-gray-50" />
+                </div>
+                 <div className="space-y-2">
+                  <Label>Role</Label>
+                  <Input value={user?.role || ''} disabled className="bg-gray-50" />
+                </div>
               </div>
             </div>
 
-            {/* Role and Status */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="role" className="text-xs font-normal">Role</Label>
-                <Select
-                  value={formData.role}
-                  onValueChange={(value) => setFormData({ ...formData, role: value })}
-                >
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Super Admin" className="text-xs">Super Admin</SelectItem>
-                    <SelectItem value="Admin" className="text-xs">Admin</SelectItem>
-                    <SelectItem value="Manager" className="text-xs">Manager</SelectItem>
-                    <SelectItem value="Staff" className="text-xs">Staff</SelectItem>
-                    <SelectItem value="User" className="text-xs">User</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="status" className="text-xs font-normal">Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData({ ...formData, status: value })}
-                >
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active" className="text-xs">Active</SelectItem>
-                    <SelectItem value="inactive" className="text-xs">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+             <div className="h-px bg-gray-100 my-2" />
 
-            {/* Permissions Section */}
-            <div className="space-y-3 mt-5">
-              <Label className="text-xs font-normal text-red-500">* Permissions & Access</Label>
-              
-              <div className="space-y-4">
-                {categoryPermissions.map((category, idx) => (
-                  <div key={idx} className="space-y-2">
-                    {category.category && (
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-gray-700 font-semibold min-w-[180px]">{category.category}</p>
-                        <div className="h-px bg-gray-200 flex-1"></div>
+            {/* Account Status */}
+             <div className="space-y-2">
+               <h3 className="text-sm font-semibold text-gray-900 mb-3">Account Status</h3>
+                <CustomToggle
+                  label={formData.isEnabled ? "User Account enabled" : "User Account disabled"}
+                  checked={formData.isEnabled}
+                  onChange={(checked) => setFormData(prev => ({ ...prev, isEnabled: checked }))}
+                  activeColor="bg-green-500"
+                />
+             </div>
+
+            <div className="h-px bg-gray-100 my-2" />
+
+            {/* Permissions */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-purple-600" />
+                  Access Permissions
+                </h3>
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={toggleAllPermissions}
+                  className="text-xs h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                >
+                  {formData.permissions.length === PANEL_PERMISSIONS.length ? 'Deselect All' : 'Select All'}
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {PANEL_PERMISSIONS.map((perm) => {
+                  const isSelected = formData.permissions.includes(perm);
+                  const label = perm.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                  
+                  return (
+                    <div 
+                      key={perm}
+                      onClick={() => togglePermission(perm)}
+                      className={`
+                        flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-all duration-200 select-none
+                        ${isSelected 
+                          ? 'bg-blue-50 border-blue-200 shadow-sm' 
+                          : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'}
+                      `}
+                    >
+                      <div className={`
+                        h-5 w-5 rounded border flex items-center justify-center transition-colors
+                        ${isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-300'}
+                      `}>
+                        {isSelected && <Check className="h-3.5 w-3.5" />}
                       </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-                      {category.items.map((itemId) => {
-                        const permission = permissions.find(p => p.id === itemId);
-                        if (!permission) return null;
-                        
-                        return (
-                          <div key={permission.id} className="flex items-start gap-2">
-                            <Checkbox
-                              id={permission.id}
-                              checked={permission.checked}
-                              onCheckedChange={() => handlePermissionToggle(permission.id)}
-                              className="mt-0.5 h-4 w-4 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                            />
-                            <div className="flex-1">
-                              <Label
-                                htmlFor={permission.id}
-                                className="cursor-pointer text-xs font-normal leading-tight"
-                              >
-                                {permission.label}
-                              </Label>
-                              {permission.description && (
-                                <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                                  {permission.description}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      <span className={`text-xs font-medium ${isSelected ? 'text-blue-700' : 'text-gray-600'}`}>
+                        {label}
+                      </span>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
+
           </form>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-9 text-xs px-4"
-          >
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 flex-shrink-0">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            form="edit-user-form"
-            className="bg-blue-600 hover:bg-blue-700 h-9 text-xs px-4"
-          >
-            Update
+          <Button type="submit" form="edit-user-form" className="bg-red-500 hover:bg-red-600 text-white px-6">
+            Save Changes
           </Button>
         </div>
+
       </DialogContent>
     </Dialog>
   );

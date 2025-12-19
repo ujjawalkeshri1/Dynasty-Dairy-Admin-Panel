@@ -11,7 +11,7 @@ export const API_CONFIG = {
   BASE_URL: (VITE_API_BASE_URL || 'http://localhost:5000') + '/api',
 
   TIMEOUT: 30000,
-  ENABLE_API: true,
+  ENABLE_API: true, // Enabled to use backend API
 };
 
 export const API_ENDPOINTS = {
@@ -49,6 +49,10 @@ export const API_ENDPOINTS = {
     UPDATE: '/products/update-product/:id', // Postman: PUT /api/products/update-product/:id
     DELETE: '/products/delete-product/:id', // Postman: DELETE /api/products/delete-product/:id
     TOGGLE_STATUS: '/products/toggle/:id', // Assumed pattern
+    VARIANTS: {
+      CREATE: '/products/:id/variants', // Add variant to product
+      DELETE: '/products/:id/variants/:variantId', // Delete variant from product
+    },
   },
 
   CATEGORIES: {
@@ -67,6 +71,15 @@ export const API_ENDPOINTS = {
     UPDATE: '/orders/update-order/:id',
     DELETE: '/orders/delete-order/:id',
     UPDATE_STATUS: '/orders/status/:id',
+  },
+
+  // User Management (Panel Users)
+  USERS: {
+    // ✨ FIX: Added '/users' back to match Postman ({{Base_URL}}/api/users/panel-users)
+    LIST: '/users/panel-users',    
+    CREATE: '/users/panel-users',  
+    UPDATE: '/users/panel-users/:id',
+    DELETE: '/users/panel-users/:id', 
   },
 
   // Other modules (Keeping standard for now, update as you discover them)

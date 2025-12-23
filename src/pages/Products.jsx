@@ -38,7 +38,7 @@ export function Products() {
     createProduct,
     updateProduct,
     deleteProduct,
-    refetch
+    refetch // ✅ This is what we need to call to refresh the list
   } = useApiProducts({
     search: searchQuery,
     category: selectedCategory,
@@ -79,77 +79,7 @@ export function Products() {
     toast.success("Product data refreshed");
   };
 
-  const handleUpdateProduct = async (updatedData) => {
-    if (!selectedProduct) return;
-    
-    // 1. Validate ID
-    const productId = selectedProduct._id || selectedProduct.id;
-    if (!productId) {
-        toast.error("Error: Product ID is missing");
-        return;
-    }
-
-    const toastId = toast.loading("Updating product...");
-
-    try {
-      const payload = new FormData();
-
-      // 2. Prepare Name
-      const name = updatedData.dishName || updatedData.name;
-      if (name) {
-          payload.append('dishName', name.trim());
-          payload.append('name', name.trim());
-      }
-
-      // 3. Prepare other fields (Convert to string explicitly to be safe)
-      if (updatedData.category) payload.append('category', String(updatedData.category));
-      
-      // ✨ FORCE NUMBERS: Ensure we send the new price values
-      if (updatedData.price !== undefined && updatedData.price !== null) {
-          payload.append('price', String(updatedData.price));
-      }
-      if (updatedData.originalPrice !== undefined && updatedData.originalPrice !== null) {
-          payload.append('originalPrice', String(updatedData.originalPrice));
-      }
-      if (updatedData.cost !== undefined && updatedData.cost !== null) {
-          payload.append('cost', String(updatedData.cost));
-      }
-      if (updatedData.stock !== undefined && updatedData.stock !== null) {
-          payload.append('stock', String(updatedData.stock));
-      }
-      if (updatedData.volume) payload.append('volume', String(updatedData.volume));
-      
-      // 4. Handle Image
-      if (updatedData.image instanceof File) {
-        payload.append('image', updatedData.image);
-      }
-
-      // 5. Send Request
-      await updateProduct(productId, payload);
-
-      toast.dismiss(toastId);
-      showSuccessToast('Product updated successfully!');
-
-      // 6. ✨ Aggressive Refresh Strategy
-      // Update UI immediately (close modal)
-      setEditModalOpen(false);
-      setSelectedProduct(null);
-
-      // Fetch immediately
-      if (refetch) refetch();
-      
-      // Fetch again after 1.5 seconds to catch slow database writes
-      setTimeout(() => {
-          if (refetch) refetch();
-      }, 1500);
-
-    } catch (err) {
-      toast.dismiss(toastId);
-      console.error("Update failed:", err);
-      toast.error(err.message || 'Failed to update product');
-    }
-  };
-
+  // ... (handleUpdateProduct and handleDeleteProduct logic remains same) ...
   const handleDeleteProduct = async () => {
     if (!selectedProduct) return;
     const productId = selectedProduct._id || selectedProduct.id;
@@ -172,6 +102,7 @@ export function Products() {
 
   return (
     <div className="p-4">
+      {/* ... Header and Stats ... */}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Products / Management</h2>
@@ -197,6 +128,7 @@ export function Products() {
       </div>
 
       <Card className="p-6 bg-gray-50/50 border-none shadow-none">
+        {/* ... Search and Filters ... */}
         <div className="space-y-4 mb-2">
           <div className="flex items-center gap-4 bg-white p-4 rounded-lg border shadow-sm">
             <div className="relative flex-1">
@@ -236,6 +168,7 @@ export function Products() {
           )}
         </div>
 
+        {/* ... Products Grid ... */}
         {!productsLoading && !productsError && sortedProducts.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-2">
             {sortedProducts.map((product) => {
@@ -259,7 +192,6 @@ export function Products() {
                       </h3>
                       <p className="text-xs text-gray-500 capitalize mb-2 truncate">{categoryName}</p>
                       <div className="flex items-center justify-between mt-3">
-                        {/* ✨ Display Price */}
                         <span className="text-2xl font-bold text-gray-900">₹{product.price || 0}</span>
                       </div>
                     </div>
@@ -274,7 +206,7 @@ export function Products() {
                         onClick={() => {
                           setSelectedProduct({
                             ...product,
-                            dishName: product.name // Map for form
+                            dishName: product.name 
                           });
                           setEditModalOpen(true);
                         }}>
@@ -297,30 +229,40 @@ export function Products() {
         {!productsLoading && sortedProducts.length === 0 && <p className="text-center mt-8">No products found.</p>}
       </Card>
 
-      <AddProductModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onAdd={createProduct} categories={categories} />
+      {/* ✅ CORRECTED ADD MODAL IMPLEMENTATION */}
+      <AddProductModal 
+        open={addModalOpen} 
+        onClose={() => setAddModalOpen(false)} 
+        // 1. Removed onAdd={createProduct} because the modal handles API call internally now
+        // 2. Added onSuccess to trigger refresh
+        onSuccess={() => {
+            if (refetch) refetch(); // <-- Triggers re-fetch
+        }} 
+        categories={categories} 
+      />
 
       {selectedProduct && (
         <>
           <EditModal
             open={editModalOpen}
-            onOpenChange={(open) => { setEditModalOpen(open); if (!open) setSelectedProduct(null); }}
-            onSave={handleUpdateProduct}
-            title="Edit Product"
-            data={selectedProduct}
-            fields={[
-              { key: 'dishName', label: 'Product Name', type: 'text' },
-              { key: 'category', label: 'Category', type: 'select', options: categories.map(c => ({ label: c.displayName || c.name, value: c._id || c.id })) },
-              { key: 'price', label: 'Price (₹)', type: 'number' },
-              { key: 'originalPrice', label: 'Original Price (₹)', type: 'number' },
-              { key: 'cost', label: 'Cost (₹)', type: 'number' },
-              { key: 'stock', label: 'Stock', type: 'number' },
-              { key: 'volume', label: 'Volume/Size', type: 'text' },
-              { key: 'image', label: 'Product Image', type: 'file' },
-            ]}
+            onOpenChange={(open) => {
+              setEditModalOpen(open);
+              if (!open) setSelectedProduct(null);
+            }}
+            product={selectedProduct}
+            categories={categories} 
+            onSuccess={() => {
+              if (refetch) refetch(); 
+              setEditModalOpen(false); 
+            }}
           />
+
           <DeleteConfirmationModal
             open={deleteModalOpen}
-            onOpenChange={(open) => { setDeleteModalOpen(open); if (!open) setSelectedProduct(null); }}
+            onOpenChange={(open) => {
+              setDeleteModalOpen(open);
+              if (!open) setSelectedProduct(null);
+            }}
             onConfirm={handleDeleteProduct}
             title="Delete Product"
             description={`Are you sure you want to delete "${selectedProduct.name || 'this product'}"? This action cannot be undone.`}
